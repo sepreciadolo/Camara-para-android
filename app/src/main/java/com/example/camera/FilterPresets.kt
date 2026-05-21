@@ -123,6 +123,7 @@ object FilterPresets {
      * Dynamically adjusts the contrast of a Bitmap using a ColorMatrix.
      */
     fun adjustContrast(source: Bitmap, contrast: Float): Bitmap {
+        if (source.isRecycled) return source
         if (contrast == 1.0f) return source
         
         val width = source.width
@@ -147,5 +148,197 @@ object FilterPresets {
         
         canvas.drawBitmap(source, 0f, 0f, paint)
         return output
+    }
+
+    /**
+     * Converts a bitmap into a high-contrast black & white scanned page style.
+     */
+    fun convertToDocumentScan(source: Bitmap): Bitmap {
+        if (source.isRecycled) return source
+        val width = source.width
+        val height = source.height
+        val output = Bitmap.createBitmap(width, height, source.config ?: Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        
+        val paint = Paint().apply {
+            isAntiAlias = true
+            isFilterBitmap = true
+            // Grayscale ColorMatrix
+            val colorMatrix = android.graphics.ColorMatrix().apply {
+                setSaturation(0f)
+            }
+            colorFilter = ColorMatrixColorFilter(colorMatrix)
+        }
+        
+        canvas.drawBitmap(source, 0f, 0f, paint)
+        
+        // Boost contrast significantly to clear background shadow noise and pop dark document text
+        val finalResult = adjustContrast(output, 1.8f)
+        if (finalResult != output) {
+            output.recycle()
+        }
+        return finalResult
+    }
+
+    /**
+     * Implements a simulated Bokeh Depth Of Field using stack blur and radial vignette blend.
+     */
+    fun applyPortraitBokeh(source: Bitmap): Bitmap {
+        if (source.isRecycled) return source
+        val width = source.width
+        val height = source.height
+        val output = Bitmap.createBitmap(width, height, source.config ?: Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        
+        // Draw primary clear content
+        canvas.drawBitmap(source, 0f, 0f, null)
+        
+        // Draw blurred content over with central clear vignetting
+        val blurred = createBlurredBitmap(source, 10)
+        
+        val maskPaint = Paint().apply {
+            isAntiAlias = true
+            shader = android.graphics.RadialGradient(
+                width / 2f,
+                height / 2.2f, // Anchor near standard human face position
+                Math.min(width, height) * 0.35f, // Smooth transition bokeh radius
+                intArrayOf(0x00000000, 0xFFFFFFFF.toInt()), // sharp center, fully blurred background
+                null,
+                android.graphics.Shader.TileMode.CLAMP
+            )
+        }
+        
+        canvas.drawBitmap(blurred, 0f, 0f, maskPaint)
+        blurred.recycle()
+        
+        return output
+    }
+
+    /**
+     * Crops image into an wider-aspect Panoramic cinematic landscape dimension with popping colors.
+     */
+    fun applyPanoramaCrop(source: Bitmap): Bitmap {
+        if (source.isRecycled) return source
+        val width = source.width
+        val height = source.height
+        val targetAspect = 21.0f / 9.0f // ultra widescreen panoramic format
+        
+        var cropWidth = width
+        var cropHeight = (width / targetAspect).toInt()
+        if (cropHeight > height) {
+            cropHeight = height
+            cropWidth = (height * targetAspect).toInt()
+        }
+        
+        val startX = (width - cropWidth) / 2
+        val startY = (height - cropHeight) / 2
+        
+        val cropped = Bitmap.createBitmap(source, startX, startY, cropWidth, cropHeight)
+        
+        val popContrast = adjustContrast(cropped, 1.15f)
+        if (popContrast != cropped) {
+            cropped.recycle()
+        }
+        return popContrast
+    }
+
+    /**
+     * Pure Kotlin execution of fast stack blur for background bokeh depth of field.
+     */
+    private fun createBlurredBitmap(sentBitmap: Bitmap, radius: Int): Bitmap {
+        val bitmap = sentBitmap.copy(sentBitmap.config ?: Bitmap.Config.ARGB_8888, true)
+        if (radius < 1) return bitmap
+        val w = bitmap.width
+        val h = bitmap.height
+        val pix = IntArray(w * h)
+        bitmap.getPixels(pix, 0, w, 0, 0, w, h)
+        
+        val wm = w - 1
+        val hm = h - 1
+        val wh = w * h
+        val div = radius + radius + 1
+        
+        val r = IntArray(wh)
+        val g = IntArray(wh)
+        val b = IntArray(wh)
+        var rsum: Int
+        var gsum: Int
+        var bsum: Int
+        var x: Int
+        var y: Int
+        var i: Int
+        var p: Int
+        var yp: Int
+        var yi: Int
+        var yw: Int
+        val vmin = IntArray(Math.max(w, h))
+        val dv = IntArray(256 * div)
+        for (idx in 0 until 256 * div) {
+            dv[idx] = idx / div
+        }
+        yw = 0
+        yi = 0
+        y = 0
+        while (y < h) {
+            rsum = 0
+            gsum = 0
+            bsum = 0
+            for (offset in -radius..radius) {
+                p = pix[yi + Math.min(wm, Math.max(offset, 0))]
+                rsum += p shr 16 and 0xff
+                gsum += p shr 8 and 0xff
+                bsum += p and 0xff
+            }
+            x = 0
+            while (x < w) {
+                r[yi] = dv[rsum]
+                g[yi] = dv[gsum]
+                b[yi] = dv[bsum]
+                if (y == 0) {
+                    vmin[x] = Math.min(x + radius + 1, wm)
+                }
+                val p1 = pix[yw + vmin[x]]
+                val p2 = pix[yw + Math.max(x - radius, 0)]
+                rsum += (p1 shr 16 and 0xff) - (p2 shr 16 and 0xff)
+                gsum += (p1 shr 8 and 0xff) - (p2 shr 8 and 0xff)
+                bsum += (p1 and 0xff) - (p2 and 0xff)
+                yi++
+                x++
+            }
+            yw += w
+            y++
+        }
+        x = 0
+        while (x < w) {
+            rsum = 0
+            gsum = 0
+            bsum = 0
+            yp = -radius * w
+            for (offset in -radius..radius) {
+                yi = Math.max(0, yp) + x
+                rsum += r[yi]
+                gsum += g[yi]
+                bsum += b[yi]
+                yp += w
+            }
+            yi = x
+            y = 0
+            while (y < h) {
+                pix[yi] = (-0x1000000 or (dv[rsum] shl 16) or (dv[gsum] shl 8) or dv[bsum])
+                if (x == 0) {
+                    vmin[y] = Math.min(y + radius + 1, hm) * w
+                }
+                val p1 = x + vmin[y]
+                val p2 = x + Math.max(y - radius, 0) * w
+                rsum += r[p1] - r[p2]
+                gsum += g[p1] - g[p2]
+                bsum += b[p1] - b[p2]
+                yi += w
+                y++
+            }
+            x++
+        }
+        bitmap.setPixels(pix, 0, w, 0, 0, w, h)
+        return bitmap
     }
 }

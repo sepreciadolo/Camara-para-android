@@ -385,8 +385,11 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                                     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
                                         activeTextureView = this@apply
+                                        configureTextureViewTransform(this@apply, width, height, viewModel)
                                     }
-                                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+                                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+                                        configureTextureViewTransform(this@apply, width, height, viewModel)
+                                    }
                                     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
                                         if (activeTextureView == this@apply) {
                                             activeTextureView = null
@@ -399,7 +402,7 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                             }
                         },
                         modifier = Modifier
-                            .aspectRatio(9f / 16f)
+                            .fillMaxSize()
                             .testTag("camera_viewfinder")
                     )
 
@@ -410,6 +413,9 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
 
                     // Real-time Visual Filter Overlays
                     FilterVisualOverlay(filter = activeFilter)
+
+                    // High-quality specialty guidelines overlays for Portrait, Document, and Panorama
+                    ModeSpecialtyOverlay(mode = shootMode)
 
                     // Aesthetic Focus Reticle aligned perfectly in the center OR at user tapped focus point
                     if (focusPoint != null) {
@@ -648,6 +654,7 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
 
                 // 4. BOTTOM ACTION & TRIGGER ROW
                 CameraBottomBar(
+                    viewModel = viewModel,
                     shootMode = shootMode,
                     lastPhotoUri = lastPhotoUri,
                     isRecordingVideo = isRecordingVideo,
@@ -750,8 +757,11 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                                 surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                                     override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
                                         activeTextureView = this@apply
+                                        configureTextureViewTransform(this@apply, width, height, viewModel)
                                     }
-                                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+                                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+                                        configureTextureViewTransform(this@apply, width, height, viewModel)
+                                    }
                                     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
                                         if (activeTextureView == this@apply) {
                                             activeTextureView = null
@@ -764,7 +774,7 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                             }
                         },
                         modifier = Modifier
-                            .aspectRatio(16f / 9f)
+                            .fillMaxSize()
                             .testTag("camera_viewfinder")
                     )
 
@@ -775,6 +785,9 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
 
                     // Real-time Visual Filter Overlay
                     FilterVisualOverlay(filter = activeFilter)
+
+                    // High-quality specialty guidelines overlays for Portrait, Document, and Panorama
+                    ModeSpecialtyOverlay(mode = shootMode)
 
                     // Aesthetic Focus Reticle aligned perfectly in the center OR at user tapped focus point
                     if (focusPoint != null) {
@@ -1158,27 +1171,14 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                             }
                         }
 
-                        // Large Shutter Button
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .border(BorderStroke(2.dp, Color.White), CircleShape)
-                                .padding(4.dp)
-                                .clickable {
-                                    viewModel.triggerPhotoCapture(context, onError = { err ->
-                                        Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                                    })
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val centerColor = if (shootMode == CameraViewModel.ShootMode.VIDEO) Color(0xFFE53935) else Color.White
-                            val centerShape = if (isRecordingVideo) RoundedCornerShape(6.dp) else CircleShape
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(centerColor, centerShape)
-                            )
-                        }
+                        // Large Shutter Button with unified intelligent behaviors
+                        AestheticShutterButton(
+                            viewModel = viewModel,
+                            shootMode = shootMode,
+                            isRecordingVideo = isRecordingVideo,
+                            size = 56.dp,
+                            borderWidth = 2.dp
+                        )
 
                         // Flip Camera Icon Toggle
                         Box(
@@ -1335,6 +1335,296 @@ fun FilterVisualOverlay(filter: CameraFilter) {
             .fillMaxSize()
             .background(brush)
     )
+}
+
+/**
+ * Helper to dynamically scale the preview in a TextureView without distortion using center-crop logic.
+ */
+fun configureTextureViewTransform(textureView: TextureView, viewWidth: Int, viewHeight: Int, viewModel: CameraViewModel) {
+    if (viewWidth == 0 || viewHeight == 0) return
+    val previewSize = viewModel.getPreviewSize()
+    val matrix = android.graphics.Matrix()
+    
+    val centerX = viewWidth / 2f
+    val centerY = viewHeight / 2f
+    
+    val isPortrait = viewHeight > viewWidth
+    val previewW = if (isPortrait) previewSize.height else previewSize.width
+    val previewH = if (isPortrait) previewSize.width else previewSize.height
+    
+    val scaleX = viewWidth.toFloat() / previewW.toFloat()
+    val scaleY = viewHeight.toFloat() / previewH.toFloat()
+    
+    // Fill completely (center crop) to keep preview aspect ratio perfectly undistorted
+    val scale = Math.max(scaleX, scaleY)
+    
+    val postScaleX = (previewW.toFloat() * scale) / viewWidth.toFloat()
+    val postScaleY = (previewH.toFloat() * scale) / viewHeight.toFloat()
+    
+    matrix.setScale(postScaleX, postScaleY, centerX, centerY)
+    textureView.setTransform(matrix)
+}
+
+/**
+ * High-End Visual Guidelines Overlays for specialty modes: Retrato, Documentos, Panorámica.
+ */
+@Composable
+fun ModeSpecialtyOverlay(mode: CameraViewModel.ShootMode) {
+    when (mode) {
+        CameraViewModel.ShootMode.PORTRAIT -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                // Soft dash circular bokeh depth indicator
+                androidx.compose.foundation.Canvas(modifier = Modifier.size(240.dp)) {
+                    drawCircle(
+                        color = Color(0xFFFBBF24).copy(alpha = 0.4f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 1.5.dp.toPx(),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(15f, 15f), 0f)
+                        )
+                    )
+                }
+                
+                // Overlay text badge
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 48.dp)
+                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0xFFFBBF24).copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(Color(0xFFFBBF24), CircleShape)
+                        )
+                        Text(
+                            text = "MODO RETRATO • ENFOQUE DE PROFUNDIDAD",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFBBF24),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+        }
+        CameraViewModel.ShootMode.DOCUMENTS -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                // Scanning frame outline
+                Box(
+                    modifier = Modifier
+                        .size(width = 240.dp, height = 320.dp)
+                        .border(2.dp, Color(0xFF3B82F6), RoundedCornerShape(12.dp))
+                        .background(Color(0xFF3B82F6).copy(alpha = 0.05f))
+                )
+                
+                // Overlay text badge
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 48.dp)
+                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0xFF3B82F6).copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Description,
+                            contentDescription = null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "MODO DOCUMENTO • ESCANER DE ALTA FIDELIDAD",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF3B82F6),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+        }
+        CameraViewModel.ShootMode.PANORAMA -> {
+            Box(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Horizontal level reference lines
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                        .height(1.dp)
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(Color.Transparent, Color(0xFF10B981), Color.Transparent)
+                            )
+                        )
+                )
+                
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = 56.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(5) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .background(Color(0xFF10B981).copy(alpha = 0.7f), CircleShape)
+                        )
+                    }
+                }
+                
+                // Overlay text badge
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 48.dp)
+                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0xFF10B981).copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Crop,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Text(
+                            text = "MODO PANORÁMICA • GIRE CONTINUAMENTE",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF10B981),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+        }
+        else -> {}
+    }
+}
+
+/**
+ * Unified Intelligent Shutter Button that supports pressing-and-holding continuous burst mode capture,
+ * QuickVideo conversion trigger, other specialty modes, and standard photo capture.
+ */
+@Composable
+fun AestheticShutterButton(
+    viewModel: CameraViewModel,
+    shootMode: CameraViewModel.ShootMode,
+    isRecordingVideo: Boolean,
+    size: androidx.compose.ui.unit.Dp,
+    borderWidth: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val isQuickVideoRecording by viewModel.isQuickVideoRecording.collectAsStateWithLifecycle()
+    
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (isRecordingVideo || isQuickVideoRecording) 0.85f else 1.0f,
+        animationSpec = tween(200)
+    )
+    
+    Box(
+        modifier = modifier
+            .scale(scaleAnim)
+            .size(size)
+            .border(BorderStroke(borderWidth, Color.White), CircleShape)
+            .padding(borderWidth + 2.dp)
+            .testTag("shutter_button")
+            .pointerInput(shootMode, isRecordingVideo, isQuickVideoRecording) {
+                detectTapGestures(
+                    onPress = { offset ->
+                        val pressTime = System.currentTimeMillis()
+                        
+                        if (shootMode == CameraViewModel.ShootMode.BURST) {
+                            viewModel.startContinuousBurstCapture(context) { err ->
+                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        
+                        val released = tryAwaitRelease()
+                        val duration = System.currentTimeMillis() - pressTime
+                        
+                        if (shootMode == CameraViewModel.ShootMode.BURST) {
+                            viewModel.stopContinuousBurstCapture()
+                        } else if (shootMode == CameraViewModel.ShootMode.AUTO) {
+                            if (duration >= 400) {
+                                viewModel.stopQuickVideo(context)
+                            } else {
+                                viewModel.triggerPhotoCapture(context) { err ->
+                                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } else {
+                            // Standard triggers
+                            viewModel.triggerPhotoCapture(context) { err ->
+                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onLongPress = {
+                        if (shootMode == CameraViewModel.ShootMode.AUTO) {
+                            viewModel.startQuickVideo(context) { err ->
+                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        val centerColor = if (shootMode == CameraViewModel.ShootMode.VIDEO || actsLikeVideo(shootMode, isRecordingVideo, isQuickVideoRecording)) Color(0xFFE53935) else Color.White
+        val centerShape = if (isRecordingVideo || isQuickVideoRecording) RoundedCornerShape(8.dp) else CircleShape
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(centerColor, centerShape)
+        ) {
+            if (shootMode == CameraViewModel.ShootMode.TIMER && !isRecordingVideo) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Timer,
+                        contentDescription = "Timer shoot trigger",
+                        tint = Color.Black.copy(alpha = 0.6f),
+                        modifier = Modifier.size(size * 0.3f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun actsLikeVideo(shootMode: CameraViewModel.ShootMode, isRecording: Boolean, isQuickRecording: Boolean): Boolean {
+    return isRecording || isQuickRecording || shootMode == CameraViewModel.ShootMode.VIDEO
 }
 
 /**
@@ -1668,6 +1958,7 @@ fun StatusBarBanner(message: String?) {
  */
 @Composable
 fun CameraBottomBar(
+    viewModel: CameraViewModel,
     shootMode: CameraViewModel.ShootMode,
     lastPhotoUri: Uri?,
     isRecordingVideo: Boolean,
@@ -1773,48 +2064,14 @@ fun CameraBottomBar(
                 }
             }
 
-            // Center Action: EXCEL SHUTTER BUTTON
-            val scaleAnim by animateFloatAsState(
-                targetValue = if (isRecordingVideo) 0.85f else 1.0f,
-                animationSpec = tween(200)
+            // Center Action: EXCEL STUTTER BUTTON with full touch-and-hold capabilities
+            AestheticShutterButton(
+                viewModel = viewModel,
+                shootMode = shootMode,
+                isRecordingVideo = isRecordingVideo,
+                size = 80.dp,
+                borderWidth = 3.dp
             )
-            
-            Box(
-                modifier = Modifier
-                    .scale(scaleAnim)
-                    .size(80.dp)
-                    .border(BorderStroke(3.dp, Color.White), CircleShape)
-                    .padding(5.dp)
-                    .testTag("shutter_button")
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onTriggerCapture() },
-                contentAlignment = Alignment.Center
-            ) {
-                val centerColor = if (shootMode == CameraViewModel.ShootMode.VIDEO) Color(0xFFE53935) else Color.White
-                val centerShape = if (isRecordingVideo) RoundedCornerShape(8.dp) else CircleShape
-                
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(centerColor, centerShape)
-                ) {
-                    if (shootMode == CameraViewModel.ShootMode.TIMER && !isRecordingVideo) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Timer,
-                                contentDescription = "Timer shoot trigger",
-                                tint = Color.Black.copy(alpha = 0.6f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-            }
 
             // Right Action: FLIP CAMERA lens selector (redefined premium translucent circular glass)
             Box(

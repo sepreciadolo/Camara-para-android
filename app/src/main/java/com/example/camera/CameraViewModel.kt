@@ -112,6 +112,14 @@ class CameraViewModel : ViewModel() {
     private val _manualContrast = MutableStateFlow(1.0f)
     val manualContrast = _manualContrast.asStateFlow()
 
+    private val _isCustomBurstActive = MutableStateFlow(false)
+    val isCustomBurstActive = _isCustomBurstActive.asStateFlow()
+
+    private val _isQuickVideoRecording = MutableStateFlow(false)
+    val isQuickVideoRecording = _isQuickVideoRecording.asStateFlow()
+
+    private var customBurstJob: kotlinx.coroutines.Job? = null
+
     private fun showTempStatusMessage(message: String, delayMs: Long = 2500) {
         statusClearJob?.cancel()
         _statusBarMessage.value = message
@@ -382,6 +390,88 @@ class CameraViewModel : ViewModel() {
         }
     }
 
+    fun startContinuousBurstCapture(context: Context, onError: (String) -> Unit) {
+        val service = cameraService ?: return
+        if (_isCustomBurstActive.value) return
+        _isCustomBurstActive.value = true
+        _isCapturingBurst.value = true
+        _burstIndex.value = 0
+        customBurstJob = viewModelScope.launch(Dispatchers.IO) {
+            var index = 0
+            while (_isCustomBurstActive.value) {
+                index++
+                _burstIndex.value = index
+                _statusBarMessage.value = "Ráfaga: Captura $index"
+                service.capturePhoto { bytes ->
+                    processAndSavePhotoBytes(context, bytes)
+                }
+                delay(300)
+            }
+        }
+    }
+
+    fun stopContinuousBurstCapture() {
+        if (!_isCustomBurstActive.value) return
+        _isCustomBurstActive.value = false
+        customBurstJob?.cancel()
+        customBurstJob = null
+        _isCapturingBurst.value = false
+        val total = _burstIndex.value
+        showTempStatusMessage("Ráfaga completada con éxito ($total fotos)")
+    }
+
+    fun startQuickVideo(context: Context, onError: (String) -> Unit) {
+        val service = cameraService ?: return
+        if (_isRecordingVideo.value) return
+        
+        _isQuickVideoRecording.value = true
+        _isRecordingVideo.value = true
+        _recordingDurationSeconds.value = 0
+        
+        val videoFile = createTempVideoFile(context)
+        
+        recordingJob = viewModelScope.launch(Dispatchers.Main) {
+            while (_isRecordingVideo.value) {
+                delay(1000)
+                _recordingDurationSeconds.value += 1
+            }
+        }
+        
+        service.startVideoRecording(
+            outputFile = videoFile,
+            onStarted = {
+                showTempStatusMessage("Grabando Vídeo Rápido (Mantén presionado)")
+            },
+            onError = { err ->
+                _isRecordingVideo.value = false
+                _isQuickVideoRecording.value = false
+                recordingJob?.cancel()
+                _statusBarMessage.value = "Falla al iniciar grabación de vídeo rápido: $err"
+                onError(err)
+            }
+        )
+    }
+
+    fun stopQuickVideo(context: Context) {
+        val service = cameraService ?: return
+        if (!_isQuickVideoRecording.value) return
+        
+        _isQuickVideoRecording.value = false
+        _isRecordingVideo.value = false
+        recordingJob?.cancel()
+        
+        _statusBarMessage.value = "Almacenando vídeo..."
+        service.stopVideoRecording(
+            onStopped = { videoFile ->
+                saveVideoToMediaStore(context, videoFile)
+                _recordingDurationSeconds.value = 0
+            },
+            onError = { err ->
+                _statusBarMessage.value = "Falla al guardar vídeo: $err"
+            }
+        )
+    }
+
     private fun executeBurstCapture(context: Context, onError: (String) -> Unit) {
         val service = cameraService ?: return
         if (_isCapturingBurst.value) return
@@ -502,12 +592,29 @@ class CameraViewModel : ViewModel() {
                 }
 
                 // Apply specialty mode-based post processing
-                if (_shootMode.value == ShootMode.DOCUMENTS) {
-                    val docBoostColor = FilterPresets.adjustContrast(processedBitmap, 1.4f)
-                    if (docBoostColor != processedBitmap) {
-                        processedBitmap.recycle()
+                when (_shootMode.value) {
+                    ShootMode.DOCUMENTS -> {
+                        val scanned = FilterPresets.convertToDocumentScan(processedBitmap)
+                        if (scanned != processedBitmap) {
+                            processedBitmap.recycle()
+                        }
+                        processedBitmap = scanned
                     }
-                    processedBitmap = docBoostColor
+                    ShootMode.PORTRAIT -> {
+                        val portraitB = FilterPresets.applyPortraitBokeh(processedBitmap)
+                        if (portraitB != processedBitmap) {
+                            processedBitmap.recycle()
+                        }
+                        processedBitmap = portraitB
+                    }
+                    ShootMode.PANORAMA -> {
+                        val panoramicB = FilterPresets.applyPanoramaCrop(processedBitmap)
+                        if (panoramicB != processedBitmap) {
+                            processedBitmap.recycle()
+                        }
+                        processedBitmap = panoramicB
+                    }
+                    else -> {}
                 }
 
                 // Write into MediaStore
@@ -646,6 +753,10 @@ class CameraViewModel : ViewModel() {
             val inverted = (1.0 / seconds).roundToInt()
             "1/${inverted}s"
         }
+    }
+
+    fun getPreviewSize(): android.util.Size {
+        return cameraService?.previewSize ?: android.util.Size(1920, 1080)
     }
 
     override fun onCleared() {

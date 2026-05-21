@@ -37,7 +37,7 @@ class CameraService(private val context: Context) {
     private var backgroundHandler: Handler? = null
 
     // Sized surfaces
-    private var previewSize: Size = Size(1920, 1080)
+    var previewSize: Size = Size(1920, 1080)
     private var imageReader: ImageReader? = null
     private var activeTextureView: TextureView? = null
 
