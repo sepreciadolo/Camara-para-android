@@ -153,6 +153,13 @@ class CameraService(private val context: Context) {
      * Opens a camera connection asynchronously and binds it to a TextureView.
      */
     fun openCamera(cameraId: String, textureView: TextureView, onOpened: () -> Unit, onError: (String) -> Unit) {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                onError("Permiso de cámara ausente o no concedido")
+            }
+            return
+        }
+
         if (backgroundHandler == null) startBackgroundThread()
         
         backgroundHandler?.post {

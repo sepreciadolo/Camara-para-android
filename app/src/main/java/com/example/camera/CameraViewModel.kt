@@ -33,6 +33,7 @@ class CameraViewModel : ViewModel() {
     private val tag = "CameraViewModel"
 
     private var cameraService: CameraService? = null
+    private var sharedPrefs: android.content.SharedPreferences? = null
 
     // UI State structures
     private val _isPermissionGranted = MutableStateFlow(false)
@@ -146,8 +147,33 @@ class CameraViewModel : ViewModel() {
     fun initService(context: Context) {
         if (cameraService == null) {
             cameraService = CameraService(context)
+            sharedPrefs = context.getSharedPreferences("pro_camera_prefs", Context.MODE_PRIVATE)
+            loadSavedPreferences()
             loadDiscoveredCameras()
             queryLastMediaStorePhoto(context)
+        }
+    }
+
+    private fun loadSavedPreferences() {
+        sharedPrefs?.let { prefs ->
+            val quality = prefs.getString("video_quality", "1080p") ?: "1080p"
+            _videoQuality.value = quality
+            cameraService?.activeVideoQuality = quality
+
+            val grid = prefs.getBoolean("show_grid", true)
+            _showGrid.value = grid
+
+            val modeName = prefs.getString("shoot_mode", ShootMode.AUTO.name) ?: ShootMode.AUTO.name
+            val mode = try { ShootMode.valueOf(modeName) } catch (e: Exception) { ShootMode.AUTO }
+            _shootMode.value = mode
+            cameraService?.isTimelapseMode = (mode == ShootMode.TIMELAPSE)
+
+            val filterId = prefs.getString("current_filter", "normal") ?: "normal"
+            _currentFilter.value = FilterPresets.ALL_FILTERS.find { it.id == filterId } ?: FilterPresets.NORMAL
+
+            val flash = prefs.getString("flash_mode", "off") ?: "off"
+            _flashMode.value = flash
+            cameraService?.setFlashMode(flash)
         }
     }
 
@@ -215,6 +241,7 @@ class CameraViewModel : ViewModel() {
         val nextMode = modes[nextIndex]
         _flashMode.value = nextMode
         cameraService?.setFlashMode(nextMode)
+        sharedPrefs?.edit()?.putString("flash_mode", nextMode)?.apply()
         showTempStatusMessage("Flash: ${nextMode.uppercase()}")
     }
 
@@ -223,6 +250,7 @@ class CameraViewModel : ViewModel() {
      */
     fun setFilter(filter: CameraFilter) {
         _currentFilter.value = filter
+        sharedPrefs?.edit()?.putString("current_filter", filter.id)?.apply()
         showTempStatusMessage("Filtro: ${filter.name}")
     }
 
@@ -234,6 +262,7 @@ class CameraViewModel : ViewModel() {
         cameraService?.let { service ->
             service.isTimelapseMode = (mode == ShootMode.TIMELAPSE)
         }
+        sharedPrefs?.edit()?.putString("shoot_mode", mode.name)?.apply()
         showTempStatusMessage("Modo: ${mode.name}")
     }
 
@@ -242,11 +271,13 @@ class CameraViewModel : ViewModel() {
         cameraService?.let { service ->
             service.activeVideoQuality = quality
         }
+        sharedPrefs?.edit()?.putString("video_quality", quality)?.apply()
         showTempStatusMessage("Calidad de Vídeo: $quality")
     }
 
     fun toggleGrid() {
         _showGrid.value = !_showGrid.value
+        sharedPrefs?.edit()?.putBoolean("show_grid", _showGrid.value)?.apply()
         val msg = if (_showGrid.value) "Rejilla de captura: Activada" else "Rejilla de captura: Desactivada"
         showTempStatusMessage(msg)
     }
@@ -543,9 +574,9 @@ class CameraViewModel : ViewModel() {
                 val videoUri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
                 if (videoUri != null) {
                     resolver.openOutputStream(videoUri)?.use { outStream ->
-                        val inStream = FileOutputStream(videoFile)
-                        // Fast transfer file content
-                        videoFile.inputStream().copyTo(outStream)
+                        videoFile.inputStream().use { inStream ->
+                            inStream.copyTo(outStream)
+                        }
                     }
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

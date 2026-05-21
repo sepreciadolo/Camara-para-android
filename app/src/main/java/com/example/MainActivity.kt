@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTransformGestures
 import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -262,6 +263,27 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
         }
     }
 
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                viewModel.closeCamera()
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val tv = activeTextureView
+                val cam = selectedCamera
+                if (tv != null && cam != null) {
+                    viewModel.bindCameraStream(tv, onError = { err ->
+                        Toast.makeText(context, "Error: $err", Toast.LENGTH_SHORT).show()
+                    })
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -347,6 +369,13 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                                     viewModel.setTempStatusMessage("Cambio de contraste cancelado")
                                 }
                             )
+                        }
+                        .pointerInput(zoomFactor) {
+                            detectTransformGestures(panZoomLock = false) { centroid, pan, zoom, rotation ->
+                                if (zoom != 1.0f) {
+                                    viewModel.setZoom(zoomFactor * zoom)
+                                }
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -370,7 +399,7 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                             }
                         },
                         modifier = Modifier
-                            .fillMaxSize()
+                            .aspectRatio(9f / 16f)
                             .testTag("camera_viewfinder")
                     )
 
@@ -407,7 +436,7 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                         Box(
                             modifier = Modifier
                                 .size(96.dp)
-                                .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape),
+                                .border(1.5.dp, Color.White.copy(alpha = 0.25f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
@@ -418,69 +447,71 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                         }
                     }
 
-                    // High-End Telemetry Overlays
-                    // Top Left Meta Info
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(20.dp)
-                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = "OIS ACTIVE",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFFBBF24),
-                                letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = "SONY IMX882",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-
-                    // Top Right Exposure Info Metrics
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(20.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                    // High-End Telemetry Overlays - only show in Pro Mode to keep the picture clean
+                    if (isProDrawerOpen) {
+                        // Top Left Meta Info
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(20.dp)
+                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
-                            val currentIso = manualIso ?: 100
-                            val exposureVal = manualExposureTime
-                            val currentShutter = if (exposureVal != null) {
-                                "1/${1_000_000_000L / exposureVal}"
-                            } else {
-                                "1/500"
+                            Column {
+                                Text(
+                                    text = "OIS ACTIVE",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFBBF24),
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    text = "SONY IMX882",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
                             }
-                            listOf(
-                                "ISO $currentIso",
-                                "S $currentShutter",
-                                "EV -0.3"
-                            ).forEach { metric ->
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-                                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = metric,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = Color.White.copy(alpha = 0.9f),
-                                        fontWeight = FontWeight.Bold
-                                    )
+                        }
+
+                        // Top Right Exposure Info Metrics
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(20.dp)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.End,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val currentIso = manualIso ?: 100
+                                val exposureVal = manualExposureTime
+                                val currentShutter = if (exposureVal != null) {
+                                    "1/${1_000_000_000L / exposureVal}"
+                                } else {
+                                    "1/500"
+                                }
+                                listOf(
+                                    "ISO $currentIso",
+                                    "S $currentShutter",
+                                    "EV -0.3"
+                                ).forEach { metric ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                                            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = metric,
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color.White.copy(alpha = 0.9f),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -703,6 +734,13 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                                     viewModel.setTempStatusMessage("Cambio de contraste cancelado")
                                 }
                             )
+                        }
+                        .pointerInput(zoomFactor) {
+                            detectTransformGestures(panZoomLock = false) { centroid, pan, zoom, rotation ->
+                                if (zoom != 1.0f) {
+                                    viewModel.setZoom(zoomFactor * zoom)
+                                }
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -726,7 +764,7 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                             }
                         },
                         modifier = Modifier
-                            .fillMaxSize()
+                            .aspectRatio(16f / 9f)
                             .testTag("camera_viewfinder")
                     )
 
@@ -763,46 +801,48 @@ fun CameraWorkspace(viewModel: CameraViewModel) {
                         Box(
                             modifier = Modifier
                                 .size(80.dp)
-                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape),
+                                .border(1.5.dp, Color.White.copy(alpha = 0.2f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(modifier = Modifier.size(4.dp).background(Color.White, CircleShape))
                         }
                     }
 
-                    // OIS, telemetry, exposure metric overlays in viewfinder
-                    // Top Left Overlay: OIS Active
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp)
-                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Column {
-                            Text("OIS ACTIVE", fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFBBF24), letterSpacing = 1.sp)
-                            Text("SONY IMX882", fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Color.White)
+                    // OIS, telemetry, exposure metric overlays in viewfinder - only show in Pro Mode
+                    if (isProDrawerOpen) {
+                        // Top Left Overlay: OIS Active
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(16.dp)
+                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Column {
+                                Text("OIS ACTIVE", fontSize = 7.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFBBF24), letterSpacing = 1.sp)
+                                Text("SONY IMX882", fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
                         }
-                    }
 
-                    // Top Right Exposure metrics
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(16.dp)
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val currentIso = manualIso ?: 100
-                            val currentShutter = if (manualExposureTime != null) "1/${1_000_000_000L / manualExposureTime!!}" else "1/500"
-                            listOf("ISO $currentIso", "S $currentShutter", "EV -0.3").forEach { metric ->
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-                                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(metric, fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Bold)
+                        // Top Right Exposure metrics
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(16.dp)
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                val currentIso = manualIso ?: 100
+                                val currentShutter = if (manualExposureTime != null) "1/${1_000_000_000L / manualExposureTime!!}" else "1/500"
+                                listOf("ISO $currentIso", "S $currentShutter", "EV -0.3").forEach { metric ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                                            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(metric, fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = Color.White.copy(alpha = 0.9f), fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1317,171 +1357,121 @@ fun CameraUpperBoundToolbar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left: Flash + HDR indicators group AND DSLR alignment Grid toggle
+        // Left side: Flash and Grid pills
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clickable { onToggleFlash() }
-                    .width(36.dp)
-            ) {
-                val icon = when (flashMode) {
-                    "on" -> Icons.Default.FlashOn
-                    "auto" -> Icons.Default.FlashAuto
-                    "torch" -> Icons.Default.Highlight
-                    else -> Icons.Default.FlashOff
-                }
-                Icon(
-                    imageVector = icon,
-                    contentDescription = "Flash Options",
-                    tint = if (flashMode == "off") Color.White.copy(alpha = 0.5f) else Color(0xFFFBBF24),
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = flashMode.uppercase(Locale.ROOT),
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (flashMode == "off") Color.White.copy(alpha = 0.5f) else Color(0xFFFBBF24),
-                    letterSpacing = 0.5.sp
-                )
+            // Flash Pill
+            val flashIcon = when (flashMode) {
+                "on" -> Icons.Default.FlashOn
+                "auto" -> Icons.Default.FlashAuto
+                "torch" -> Icons.Default.Highlight
+                else -> Icons.Default.FlashOff
             }
+            UpperToolbarPill(
+                icon = flashIcon,
+                isActive = flashMode != "off",
+                onClick = onToggleFlash,
+                badgeText = flashMode.uppercase(Locale.ROOT)
+            )
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(36.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .border(1.dp, Color(0xFFFBBF24), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 3.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = "HDR",
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFFFBBF24)
-                    )
-                }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "AUTO",
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFFBBF24),
-                    letterSpacing = 0.5.sp
-                )
-            }
-
-            // DSLR GRID Toggle Badge
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (showGrid) Color(0xFFFBBF24) else Color.White.copy(alpha = 0.12f))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                    .clickable { onToggleGrid() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = if (showGrid) "GRID" else "NO GRID",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (showGrid) Color.Black else Color.White.copy(alpha = 0.8f)
-                )
-            }
-        }
-
-        // Center: Premium specs badge tag (Hidden dynamically on tight landscape / small layout gaps if needed, but fits wonderfully here!)
-        Box(
-            modifier = Modifier
-                .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
-                .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = "50MP",
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.95f),
-                letterSpacing = 0.5.sp
+            // Grid Pill
+            UpperToolbarPill(
+                icon = Icons.Default.GridView,
+                isActive = showGrid,
+                onClick = onToggleGrid,
+                badgeText = "GRID"
             )
         }
 
-        // Right side: Timer & PRO toggles AND Ultra HD quality selection
+        // Center: High-end compact capsule
+        Box(
+            modifier = Modifier
+                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                .border(0.5.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = "50MP • HDR",
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+        }
+
+        // Right side: Video quality, Timer and PRO
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Quality Selection Badge
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (videoQuality == "4K") Color(0xFFFBBF24) else Color.White.copy(alpha = 0.12f))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                    .clickable { onToggleVideoQuality() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = videoQuality,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Black,
-                    color = if (videoQuality == "4K") Color.Black else Color.White.copy(alpha = 0.8f)
-                )
-            }
+            // Quality Pill
+            UpperToolbarPill(
+                icon = Icons.Default.VideoCameraBack,
+                isActive = videoQuality == "4K",
+                onClick = onToggleVideoQuality,
+                badgeText = videoQuality
+            )
 
-            // Timer Toggle
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clickable { onToggleTimer() }
-                    .width(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Timer,
-                    contentDescription = "Timer countdown Setup",
-                    tint = if (timerDuration == 0) Color.White.copy(alpha = 0.5f) else Color(0xFFFBBF24),
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (timerDuration == 0) "OFF" else "${timerDuration}S",
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (timerDuration == 0) Color.White.copy(alpha = 0.5f) else Color(0xFFFBBF24),
-                    letterSpacing = 0.5.sp
-                )
-            }
+            // Timer Pill
+            UpperToolbarPill(
+                icon = Icons.Default.Timer,
+                isActive = timerDuration > 0,
+                onClick = onToggleTimer,
+                badgeText = if (timerDuration == 0) "OFF" else "${timerDuration}S"
+            )
 
-            // PRO Controls Toggle
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clickable { onTogglePro() }
-                    .width(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SettingsSuggest,
-                    contentDescription = "Manual Pro settings toggle",
-                    tint = if (isProControlsOpen) Color(0xFFFBBF24) else Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "PRO",
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isProControlsOpen) Color(0xFFFBBF24) else Color.White.copy(alpha = 0.5f),
-                    letterSpacing = 0.5.sp
-                )
-            }
+            // PRO Pill
+            UpperToolbarPill(
+                icon = Icons.Default.SettingsSuggest,
+                isActive = isProControlsOpen,
+                onClick = onTogglePro,
+                badgeText = "PRO"
+            )
+        }
+    }
+}
+
+@Composable
+fun UpperToolbarPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    badgeText: String
+) {
+    Box(
+        modifier = Modifier
+            .size(width = 44.dp, height = 36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isActive) Color(0xFFFBBF24).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
+            .border(1.dp, if (isActive) Color(0xFFFBBF24).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isActive) Color(0xFFFBBF24) else Color.White.copy(alpha = 0.6f),
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.height(1.dp))
+            Text(
+                text = badgeText,
+                fontSize = 6.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (isActive) Color(0xFFFBBF24) else Color.White.copy(alpha = 0.5f),
+                letterSpacing = 0.2.sp
+            )
         }
     }
 }
