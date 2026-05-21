@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer brushed metal lens bezel -->
+    <path
+        android:fillColor="#24262E"
+        android:pathData="M54,22A32,32 0,1,1 53.99,22Z" />
+    <path
+        android:fillColor="#4D515D"
+        android:pathData="M54,23.5A30.5,30.5 0,1,1 53.99,23.5Z" />
+    <path
+        android:fillColor="#121318"
+        android:pathData="M54,25A29,29 0,1,1 53.99,25Z" />
+
+    <!-- Gold Luxury Focal Indicator Ring -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,26.5A27.5,27.5 0,1,1 53.99,26.5Z"
+        android:strokeWidth="1.0"
+        android:strokeColor="#FBBF24" />
+
+    <!-- Lens text ring (mimicking focal length details, f/1.79 IMX-Cam High Glass) -->
+    <path
+        android:fillColor="#07080A"
+        android:pathData="M54,28.5A25.5,25.5 0,1,1 53.99,28.5Z" />
+
+    <!-- Aperture Blades and inner mechanics -->
+    <path
+        android:fillColor="#15171C"
+        android:pathData="M54,31A23,23 0,1,1 53.99,31Z" />
+
+    <!-- Pure crystal glass element (Midnight base) -->
+    <path
+        android:fillColor="#050C17"
+        android:pathData="M54,34A20,20 0,1,1 53.99,34Z" />
+
+    <!-- Multi-Coated optical reflections: Violet/Purple (Bottom element) -->
+    <path
+        android:fillColor="#E040FB"
+        android:fillAlpha="0.30"
+        android:pathData="M43,60a11,11 0,0,1 22,0a11,11 0,0,0 -22,0z" />
+
+    <!-- Multi-Coated optical reflections: Cyan/Teal (Top-left element) -->
+    <path
+        android:fillColor="#00E5FF"
+        android:fillAlpha="0.35"
+        android:pathData="M40,43a14,14 0,0,1 28,0a14,14 0,0,0 -28,0z" />
+
+    <!-- Secondary golden optical glass flare -->
+    <path
+        android:fillColor="#FBBF24"
+        android:fillAlpha="0.15"
+        android:pathData="M50,49a8,8 0,0,1 16,0a8,8 0,0,0 -16,0z" />
+
+    <!-- Inner small aperture camera pin-hole -->
+    <path
+        android:fillColor="#010203"
+        android:pathData="M54,46A8,8 0,1,1 53.99,46Z" />
+
+    <!-- High-intensity glass glare reflections -->
+    <path
+        android:fillColor="#B2EBF2"
+        android:fillAlpha="0.4"
+        android:pathData="M48,44A5,5 0,1,1 52.8,47A5,5 0,0,0 48,44Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.6"
+        android:pathData="M46.5,43a2,2 0,1,1 2,2a2,2 0,0,0 -2,-2z" />
+
+    <!-- Premium red L-series ring mark: Red lens dot indicator at top-right -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M78,36A3.5,3.5 0,1,1 77.99,36Z" />
+
+    <!-- Small white focus indicator line at bottom-center -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M53.5,17.5h1v4.5h-1z" />
+</vector>

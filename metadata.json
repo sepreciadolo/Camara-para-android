@@ -1,0 +1,6 @@
+{
+  "name": "Cámara Pro",
+  "description": "Una aplicación de cámara profesional de alto rendimiento diseñada para exprimir al máximo el hardware de tu dispositivo con soporte multi-lente, modo RAW, controles manuales e interfaz fluida.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
